@@ -1,0 +1,281 @@
+<html>
+<head>
+<title>WebGL Lesson 01</title>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+
+<script type="text/javascript" src="gl-matrix.js"></script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec4 aVertexColor;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+
+    varying vec4 vColor;
+    varying vec4 vPosition;
+
+    void main(void) {
+	    gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        vPosition = gl_Position;
+	    vColor = aVertexColor;
+    }
+</script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+    #ifdef GL_ES
+	    precision highp float;
+    #endif
+
+    varying vec4 vColor;
+    varying vec4 vPosition;
+
+
+    uniform float MinRe;
+    uniform float MaxRe;
+    uniform float MinIm;
+    uniform float MaxIm;
+    uniform float Re_factor;
+    uniform float Im_factor;
+    uniform int MaxIterations;
+    uniform float InputRe;
+    uniform float InputIm;
+
+    void main(void) {
+
+        float c_im = MaxIm - gl_FragCoord.y * Im_factor;
+        float c_re = MinRe + gl_FragCoord.x * Re_factor;
+
+        if(distance(c_im, InputIm) < 0.01 && distance(c_re, InputRe)< 0.01) {
+            gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            return;
+        }
+        //float c_im = InputIm;
+        //float c_re = InputRe;
+        float Z_re = c_re;
+        float Z_im = c_im;
+        bool isInside = true;
+        float t;
+        for(float n = 0.0; n < 150.0 ; ++n) {
+            float Z_re2 = Z_re * Z_re;
+            float Z_im2 = Z_im * Z_im;
+            if(Z_re2 + Z_im2 > 4.0) {
+                isInside = false;
+                break;
+            }
+            Z_im = 2.0 * Z_re * Z_im + InputIm;
+            Z_re = Z_re2 - Z_im2 + InputRe;
+            t = n;
+        }
+
+
+        if(isInside)
+            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        else {
+            
+            gl_FragColor = vec4(sin(t/5.0), cos(t/3.0), sin(t/10.0), 1.0);
+        }
+
+
+
+    }
+</script>
+
+<script type="text/javascript">
+
+var gl;
+function initGL(canvas) {
+	try {
+		gl = canvas.getContext("experimental-webgl");
+		gl.viewportHeight = canvas.height;
+		gl.viewportWidth = canvas.width;
+	} catch (e) {
+	}
+	
+	if (!gl) {
+		alert("WebGL initialization error!");
+	}
+}
+
+function getShader(gl, id) {
+	var shaderScript = document.getElementById(id);
+	if (!shaderScript) {
+		return null;
+	}
+	
+	var str = "";
+	var k = shaderScript.firstChild;
+	while (k) {
+		if (k.nodeType == 3) {
+			str += k.textContent;
+		}
+		k = k.nextSibling;
+	}
+	
+	var shader;
+	
+	if (shaderScript.type == "x-shader/x-fragment") {
+		shader = gl.createShader(gl.FRAGMENT_SHADER);
+	}
+	else if ( shaderScript.type == "x-shader/x-vertex") {
+		shader = gl.createShader(gl.VERTEX_SHADER);
+	}
+	else {
+		return null;
+	}
+	
+	gl.shaderSource(shader, str);
+	gl.compileShader(shader);
+	
+	if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+		alert(gl.getShaderInfoLog(shader));
+		return null;
+	}
+	
+	return shader;
+}
+
+var shaderProgram;
+
+function initShaders() {
+	var fragmentShader = getShader(gl, "shader-fs");
+	var vertexShader = getShader(gl, "shader-vs");
+	
+	shaderProgram = gl.createProgram();
+	gl.attachShader(shaderProgram, vertexShader);
+	gl.attachShader(shaderProgram, fragmentShader);
+	gl.linkProgram(shaderProgram);
+	
+	if(!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+		alert("Could not initialise shaders!");
+	}
+	
+	gl.useProgram(shaderProgram);
+	
+	shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+	gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+	
+	shaderProgram.vertexColorAttribute = gl.getAttribLocation(shaderProgram, "aVertexColor");
+	gl.enableVertexAttribArray(shaderProgram.vertexColorAttribute);
+	
+	shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+	shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+
+    shaderProgram.MaxRe = gl.getUniformLocation(shaderProgram, "MaxRe");
+    shaderProgram.MinRe = gl.getUniformLocation(shaderProgram, "MinRe");
+    shaderProgram.MaxIm = gl.getUniformLocation(shaderProgram, "MaxIm");
+    shaderProgram.MinIm = gl.getUniformLocation(shaderProgram, "MinIm");
+    shaderProgram.Re_factor = gl.getUniformLocation(shaderProgram, "Re_factor");
+    shaderProgram.Im_factor = gl.getUniformLocation(shaderProgram, "Im_factor");
+    shaderProgram.MaxIterations = gl.getUniformLocation(shaderProgram, "MaxIterations");
+    shaderProgram.InputRe = gl.getUniformLocation(shaderProgram, "InputRe");
+    shaderProgram.InputIm = gl.getUniformLocation(shaderProgram, "InputIm");
+}
+
+var mvMatrix = mat4.create();
+var pMatrix = mat4.create();
+
+function setMatrixUniforms() {
+	gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+	gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+}
+	
+var triangleVertexPositionBuffer;
+var triangleVertexColorBuffer;
+var squareVertexPositionBuffer;
+
+function initBuffers() {
+	triangleVertexPositionBuffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
+	var vertices = [
+		1.0,  1.0, 0.0,
+		-1.0, 1.0, 0.0,
+		1.0, -1.0, 0.0,
+        -1.0, -1.0, 0.0
+	];
+	 
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+	triangleVertexPositionBuffer.itemSize = 3;
+	triangleVertexPositionBuffer.numItems = 4;
+	
+	triangleVertexColorBuffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexColorBuffer);
+	var colors = [
+		1.0, 0.0, 0.0, 1.0,
+		0.0, 1.0, 0.0, 1.0,
+		0.0, 0.0, 1.0, 1.0
+	];
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+	triangleVertexColorBuffer.itemSize = 3;
+	triangleVertexColorBuffer.numItems = 4;
+		
+}
+var im = 0.288;
+var re = 0.353;
+var deltaRe = 0.003;
+var deltaIm = 0.007;
+var draw = function() {
+	gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+	mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+	mat4.identity(mvMatrix);
+	mat4.translate(mvMatrix, [0.0, 0.0, -3.0]);
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
+	gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, triangleVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexColorBuffer);
+	gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, triangleVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+	setMatrixUniforms();
+    var MaxRe = 2.0;
+    var MinRe = -2.0;
+    var MinIm = -2.0;
+    var MaxIm = MinIm + (MaxRe - MinRe)*gl.viewportHeight/gl.viewportWidth;
+    var Re_factor = (MaxRe - MinRe) / (gl.viewportWidth - 1);
+    var Im_factor = (MaxIm - MinIm) / (gl.viewportHeight - 1);
+
+    gl.uniform1f(shaderProgram.MaxRe, MaxRe);
+    gl.uniform1f(shaderProgram.MinRe, MinRe);
+    gl.uniform1f(shaderProgram.MaxIm, MaxIm);
+    gl.uniform1f(shaderProgram.MinIm, MinIm);
+    gl.uniform1f(shaderProgram.Re_factor, Re_factor);
+    gl.uniform1f(shaderProgram.Im_factor, Im_factor);
+    gl.uniform1f(shaderProgram.InputRe, re);
+    gl.uniform1f(shaderProgram.InputIm, im);
+    gl.uniform1i(shaderProgram.MaxIterations, 100);
+	gl.drawArrays(gl.TRIANGLE_STRIP, 0, triangleVertexPositionBuffer.numItems);
+    
+    if(re > 0.5 || re < -0.5)
+        deltaRe *= -1;
+    if(im > 0.5 || im < -0.5)
+        deltaIm *= -1;
+
+    re += deltaRe;
+    im += deltaIm;
+};
+
+
+
+function webGLStart() {
+	var canvas = document.getElementById("viewframe");
+	
+	initGL(canvas);
+	initShaders();
+	initBuffers();
+	
+	gl.clearColor(0.0, 0.0, 0.0, 1.0);
+	gl.enable(gl.DEPTH_TEST);
+	//alert("done");
+
+    setInterval(draw, 30);
+}
+</script>
+</head>
+
+<body onload="webGLStart();">
+<canvas id="viewframe" style="border: none;" width="1000" height="1000"></canvas>
+
+</body>
+</html>
